@@ -14,7 +14,7 @@ from lib.watcher import Watcher
 class AirflowDAG():
     def __init__(self, dag_id, yaml_file, description=""):
         # Default setting
-        self.default_email = 'simonyung@upwork.com'
+        self.default_email = 'simony0828@aim.com'
 
         # Airflow variables
         self.dag_id = dag_id
