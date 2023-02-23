@@ -3,24 +3,15 @@ database:
   catalog: "{{ var.value.catalog }}"
 
 target_table:
-  name: "{{ var.value.schema }}.business_transaction_events_mapping_test"
-  columns: !include business_transaction_events_mapping-Presto-ddl.yaml
+  name: "{{ var.value.schema }}.events_test"
+  columns: !include events_test-Presto-ddl.yaml
   primary_key:
     - transaction_type
-    - sherlock_id_column
-    - sherlock_id
+    - id
 
 source_tables:
   name:
-    - shasta_dl_dm.dm_csi_pii.custom_events_pii
-    - shasta_dl_dm.dm_csi_pii.business_suit_events_cfg:
-        skip_watcher: true
-    - shasta_dl_sherlock.sherlock.post_dim
-    - shasta_dl_sherlock.sherlock.hiring_manager_dim
-    - shasta_dl_sherlock.sherlock.invite_fact
-    - shasta_dl_sherlock.sherlock.bid_fact
-    - shasta_dl_sherlock.sherlock.offer_fact
-#    - shasta_dl_sherlock.sherlock.contract_fact
+    - table1
 
 watcher:
   sleep_time: 15
@@ -29,7 +20,7 @@ watcher:
 etl:
   tmp_test:
     description: 
-    sql_file: business_transaction_events_mapping.sql
+    sql_file: events_test-Presto-etl.sql
 
   sh_hello_world:
     description:
@@ -37,55 +28,13 @@ etl:
         echo "hello"
         echo "world"
 
-  tmp_suit_txn_events:
+  tmp_txn_events:
     description: 
     sql: |
         SELECT 
-             event_fingerprint 
-            ,event_date 
-            ,event_ts 
-            -- if this event is the last event by this user, add 1 millisecond as the end tstamp
-            ,COALESCE(LEAD(event_ts,1) over (PARTITION BY user_uid ORDER BY event_ts), event_ts + INTERVAL '1' SECOND) as next_event_ts
-            ,cedp.upwork_event_key 
-            ,bsec.business_event_key 
-            ,user_uid
-            ,visitor_id 
-            ,org_uid 
-            ,is_upwork_mobile_app
-            ,CASE WHEN os_family = 'iOS' and is_upwork_mobile_app and upwork_mobile_app_type = 'client' THEN 'iOS Client App'
-              WHEN os_family = 'iOS' and is_upwork_mobile_app and upwork_mobile_app_type = 'freelancer' THEN 'iOS Freelancer App'
-              WHEN os_family = 'Android' and is_upwork_mobile_app and upwork_mobile_app_type = 'client' THEN 'Android Client App'
-              WHEN os_family = 'Android' and is_upwork_mobile_app and upwork_mobile_app_type = 'freelancer' THEN 'Android Freelancer App'
-              WHEN os_family = 'iOS' and is_upwork_mobile_app = False THEN 'iOS Web'
-              WHEN os_family = 'Android' and is_upwork_mobile_app = False THEN 'Android Web' 
-              WHEN device_type = 'Computer' and is_upwork_mobile_app = False THEN 'Desktop'
-                  ELSE 'Others' END as platform
-            ,user_type 
-            ,user_agent
-            ,device_is_mobile
-            ,CASE WHEN os_family = 'iOS' and is_upwork_mobile_app THEN 'mobile-app-ios'
-              WHEN os_family = 'Android' and is_upwork_mobile_app THEN 'mobile-app-android'
-              WHEN os_family = 'iOS' and is_upwork_mobile_app = False THEN 'mobile-web-ios'
-              WHEN os_family = 'Android' and is_upwork_mobile_app = False THEN 'mobile-web-android' 
-              WHEN cedp.device_type = 'Computer' and is_upwork_mobile_app = False THEN 'desktop'
-                  ELSE 'others' END as device_type
-            ,device_family 
-            ,os_family 
-            ,os_version 
-            ,browser_family 
-            ,browser_version 
-            ,geo_region_name
-            ,geo_longitude 
-            ,geo_latitude 
-            ,geo_zipcode 
-            ,geo_city
-            ,geo_region_code
-            ,geo_country_code 
-            ,domain_session_id 
+          ...
         FROM
-          shasta_dl_dm.dm_csi_pii.custom_events_pii cedp 
-          INNER JOIN shasta_dl_dm.dm_csi_pii.business_suit_events_cfg bsec 
-          ON cedp.upwork_event_key = bsec.upwork_event_key
+          table1
         WHERE
           cedp.event_date = CAST('{{ ds }}' AS DATE)
           AND cedp.dl_partition_year = '{{ macros.ds_format(ds, "%Y-%m-%d", "%Y") }}'
@@ -96,228 +45,9 @@ etl:
     description: 
     sql: |
         SELECT 
-          'job_posted' as transaction_type
-          , 'post_dim' as sherlock_source_table
-          , 'post_id' as sherlock_id_column
-          , CAST(pd.post_id AS BIGINT) as sherlock_id
-          , se.event_fingerprint 
-          , se.event_date 
-          , se.event_ts
-          , se.business_event_key
-          , se.upwork_event_key
-          , se.user_uid
-          , se.visitor_id 
-          , se.org_uid 
-          , se.platform
-          , se.is_upwork_mobile_app
-          , se.user_type 
-          , se.user_agent
-          , se.device_is_mobile
-          , se.device_type
-          , se.device_family 
-          , se.os_family 
-          , se.os_version 
-          , se.browser_family 
-          , se.browser_version 
-          , se.geo_region_name
-          , se.geo_longitude 
-          , se.geo_latitude 
-          , se.geo_zipcode 
-          , se.geo_city
-          , se.geo_region_code
-          , se.geo_country_code 
-          , se.domain_session_id
+          ...
         FROM
-          shasta_dl_sherlock.sherlock.post_dim pd
-          INNER JOIN {{ params.tmp_suit_txn_events }} se 
-          ON (CAST(pd.hiring_manager_person_id AS BIGINT) = CAST(se.user_uid AS BIGINT)
-            AND pd.post_ts BETWEEN se.event_ts AND se.next_event_ts)
-        WHERE 
-          pd.post_date = CAST('{{ ds }}' AS DATE)
-        
-        UNION ALL
-
-        -- invite_fact
-        SELECT 
-          'invite_sent' as transaction_type
-          , 'invite_fact' as sherlock_source_table 
-          , 'invite_id' as sherlock_id_column
-          , CAST(if2.invite_id AS BIGINT) as sherlock_id
-          , se.event_fingerprint 
-          , se.event_date 
-          , se.event_ts
-          , se.business_event_key
-          , se.upwork_event_key
-          , se.user_uid
-          , se.visitor_id 
-          , se.org_uid 
-          , se.platform
-          , se.is_upwork_mobile_app
-          , se.user_type 
-          , se.user_agent
-          , se.device_is_mobile
-          , se.device_type
-          , se.device_family 
-          , se.os_family 
-          , se.os_version 
-          , se.browser_family 
-          , se.browser_version 
-          , se.geo_region_name
-          , se.geo_longitude 
-          , se.geo_latitude 
-          , se.geo_zipcode 
-          , se.geo_city
-          , se.geo_region_code
-          , se.geo_country_code 
-          , se.domain_session_id 
-        FROM
-          shasta_dl_sherlock.sherlock.invite_fact if2  
-          LEFT JOIN shasta_dl_sherlock.sherlock.hiring_manager_dim hmd
-          ON (if2.hiring_manager_key = hmd.hiring_manager_key)
-          INNER JOIN {{ params.tmp_suit_txn_events }} se 
-          ON (CAST(hmd.person_id AS BIGINT) = CAST(se.user_uid AS BIGINT)
-            AND if2.invite_ts BETWEEN se.event_ts AND se.next_event_ts)
-        WHERE
-          if2.invite_date = CAST('{{ ds }}' AS DATE)
-        
-        UNION ALL
-
-        -- bid_fact
-        SELECT 
-          'proposal_sent' as transaction_type
-          , 'bid_fact' as sherlock_source_table 
-          , 'agora_bid_id' as sherlock_id_column
-          , CAST(bf.agora_bid_id AS BIGINT) as sherlock_id
-          , se.event_fingerprint 
-          , se.event_date 
-          , se.event_ts
-          , se.business_event_key
-          , se.upwork_event_key
-          , se.user_uid
-          , se.visitor_id 
-          , se.org_uid 
-          , se.platform
-          , se.is_upwork_mobile_app
-          , se.user_type 
-          , se.user_agent
-          , se.device_is_mobile
-          , se.device_type
-          , se.device_family 
-          , se.os_family 
-          , se.os_version 
-          , se.browser_family 
-          , se.browser_version 
-          , se.geo_region_name
-          , se.geo_longitude 
-          , se.geo_latitude 
-          , se.geo_zipcode 
-          , se.geo_city
-          , se.geo_region_code
-          , se.geo_country_code 
-          , se.domain_session_id 
-        FROM
-          shasta_dl_sherlock.sherlock.bid_fact bf  
-          LEFT JOIN shasta_dl_sherlock.sherlock.freelancer_dim fd
-          ON (bf.freelancer_key = fd.freelancer_key)
-          INNER JOIN {{ params.tmp_suit_txn_events }} se 
-          ON (CAST(fd.person_id AS BIGINT) = CAST(se.user_uid AS BIGINT)
-            AND bf.src_create_ts BETWEEN se.event_ts AND se.next_event_ts)
-        WHERE
-          bf.bid_date = CAST('{{ ds }}' AS DATE)
-        
-        UNION ALL
-
-        -- offer_fact
-        SELECT 
-          'offer_sent' as transaction_type
-          , 'offer_fact' as sherlock_source_table 
-          , 'offer_id' as sherlock_id_column
-          , CAST(of2.offer_id AS BIGINT) as sherlock_id
-          , se.event_fingerprint 
-          , se.event_date 
-          , se.event_ts
-          , se.business_event_key
-          , se.upwork_event_key
-          , se.user_uid
-          , se.visitor_id 
-          , se.org_uid 
-          , se.platform
-          , se.is_upwork_mobile_app
-          , se.user_type 
-          , se.user_agent
-          , se.device_is_mobile
-          , se.device_type
-          , se.device_family 
-          , se.os_family 
-          , se.os_version 
-          , se.browser_family 
-          , se.browser_version 
-          , se.geo_region_name
-          , se.geo_longitude 
-          , se.geo_latitude 
-          , se.geo_zipcode 
-          , se.geo_city
-          , se.geo_region_code
-          , se.geo_country_code 
-          , se.domain_session_id 
-        FROM
-          shasta_dl_sherlock.sherlock.offer_fact of2  
-          LEFT JOIN shasta_dl_sherlock.sherlock.hiring_manager_dim hmd
-          ON (of2.hiring_manager_key = hmd.hiring_manager_key)
-          INNER JOIN {{ params.tmp_suit_txn_events }} se 
-          ON (CAST(hmd.person_id AS BIGINT) = CAST(se.user_uid AS BIGINT)
-            AND of2.offer_ts between se.event_ts and se.next_event_ts)
-        WHERE
-          of2.offer_date = CAST('{{ ds }}' AS DATE)
-        
-        /*
-        -- DM-6736: contract_fact not needed 
-        UNION ALL
-
-        -- contract_fact
-        select 
-          'contract_sent' as transaction_type
-          , 'contract_fact' as sherlock_source_table 
-          , 'contract_id' as sherlock_id_column
-          , CAST(cf.contract_id AS BIGINT) as sherlock_id
-          , se.event_fingerprint 
-          , se.event_date 
-          , se.event_ts
-          , se.business_event_key
-          , se.upwork_event_key
-          , se.user_uid
-          , se.visitor_id 
-          , se.org_uid 
-          , se.platform
-          , se.is_upwork_mobile_app
-          , se.user_type 
-          , se.user_agent
-          , se.device_is_mobile
-          , se.device_type
-          , se.device_family 
-          , se.os_family 
-          , se.os_version 
-          , se.browser_family 
-          , se.browser_version 
-          , se.geo_region_name
-          , se.geo_longitude 
-          , se.geo_latitude 
-          , se.geo_zipcode 
-          , se.geo_city
-          , se.geo_region_code
-          , se.geo_country_code 
-          , se.domain_session_id 
-        FROM
-          shasta_dl_sherlock.sherlock.contract_fact cf  
-          LEFT JOIN shasta_dl_sherlock.sherlock.hiring_manager_dim hmd
-          ON (cf.hiring_manager_key = hmd.hiring_manager_key)
-          INNER JOIN {{ params.tmp_suit_txn_events }} se 
-          ON (CAST(hmd.person_id AS BIGINT) = CAST(se.user_uid AS BIGINT)
-            AND cf.hire_ts BETWEEN se.event_ts AND se.next_event_ts)
-        WHERE 
-          cf.hire_date = CAST('{{ ds }}' AS DATE)
-        */
-
+          {{ params.tmp_txn_events }}
 
   target_table:
     description: based on the mode
