@@ -20,7 +20,7 @@ watcher:
 etl:
   tmp_test:
     description: 
-    sql_file: events_test-Presto-etl.sql
+    sql_file: events_test.sql
 
   sh_hello_world:
     description:
